@@ -3,6 +3,12 @@ all: build
 ENVVAR = GOOS=darwin GOARCH=amd64 CGO_ENABLED=0
 TAG = v0.0.1
 
+SOURCE_FILES := $(shell find * -name '*.go')
+
+cloud-platform-applier: $(SOURCE_FILES)
+	export GO111MODULE=on
+	go build -o cloud-platform-applier ./main.go
+
 build: clean
 	$(ENVVAR) go build -o cloud-platform-applier
 

@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/poornima-krishnasamy/cloud-platform-applier/sysutil"
+	sysutil "github.com/cloud-platform-applier/sysutil"
 )
 
 const (

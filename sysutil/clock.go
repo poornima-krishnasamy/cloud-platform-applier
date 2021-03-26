@@ -1,6 +1,5 @@
 // Package sysutil provides interfaces for working with the filesystem, go
 // templates and a Clock interface for time-related functions.
-// +build admin
 
 package sysutil
 

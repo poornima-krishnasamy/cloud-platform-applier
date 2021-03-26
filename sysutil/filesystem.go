@@ -1,5 +1,3 @@
-// +build admin
-
 package sysutil
 
 import (
