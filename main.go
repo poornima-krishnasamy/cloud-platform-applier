@@ -1,6 +1,9 @@
+// Package main Declaration
 package main
 
+// Importing packages
 import (
+	"fmt"
 	"log"
 
 	sysutil "github.com/cloud-platform-applier/sysutil"
@@ -11,6 +14,8 @@ const (
 	logLevel    = -1
 )
 
+// Main function
+// env vars: REPO_PATH
 func main() {
 
 	repoPath := sysutil.GetRequiredEnvString("REPO_PATH")
@@ -22,13 +27,13 @@ func main() {
 
 	fileSystem := &sysutil.FileSystem{}
 
-	folderList, err := fileSystem.ListAllFiles(repoPath)
+	folderList, err := fileSystem.ListFolders(repoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for folder := range folderList {
-		log.Printf(folder)
+	for _, folder := range folderList {
+		fmt.Printf("Found directory %v\n", folder)
 	}
 
 	// fullRunQueue := make(chan bool, 1)
