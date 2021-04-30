@@ -5,6 +5,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
+	"sync"
+	"time"
 
 	sysutil "github.com/cloud-platform-applier/sysutil"
 )
@@ -18,6 +21,14 @@ const (
 // env vars: REPO_PATH
 func main() {
 
+	fmt.Printf("START TIME %s \n", time.Now().String())
+
+	fmt.Println("Version", runtime.Version())
+	fmt.Println("NumCPU", runtime.NumCPU())
+	fmt.Println("GOMAXPROCS", runtime.GOMAXPROCS(0))
+
+	const nRoutines int = 3
+
 	repoPath := sysutil.GetRequiredEnvString("REPO_PATH")
 	// clusterName := sysutil.GetRequiredEnvString("TF_VAR_cluster_name")
 	// clusterStateBucket := sysutil.GetRequiredEnvString("TF_VAR_cluster_state_bucket")
@@ -27,14 +38,68 @@ func main() {
 
 	fileSystem := &sysutil.FileSystem{}
 
-	folderList, err := fileSystem.ListFolders(repoPath)
+	folders, err := fileSystem.ListFolders(repoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, folder := range folderList {
-		fmt.Printf("Found directory %v\n", folder)
+	// for _, folder := range folders {
+	// 	fmt.Printf("Found directory %v\n", folder)
+	// }
+
+	fileSystem = &sysutil.FileSystem{}
+
+	folderChunks, err := fileSystem.ChunkFolders(folders, nRoutines)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	results := make(chan Results)
+
+	wg := &sync.WaitGroup{}
+
+	fmt.Println("Number of Chunks", len(folderChunks))
+
+	// for i := 0; i < len(folderChunks); i++ {
+	// 	wg.Add(1)
+	// 	go applyNamespaceDirs(wg, results, folderChunks[i])
+
+	// }
+
+	// if err := kube.CheckVersion(); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// successes = []ApplyAttempt{}
+	// failures = []ApplyAttempt{}
+
+	// for _, path := range applyList {
+	// 	log.Printf("RUN Applying file %v", path)
+	// 	cmd, output, err := kube.Apply(path)
+	// 	success := (err == nil)
+	// 	appliedFile := ApplyAttempt{path, cmd, output, ""}
+	// 	if success {
+	// 		successes = append(successes, appliedFile)
+	// 		log.Printf("RUN %v: %v\n%v", id, cmd, output)
+	// 	} else {
+	// 		appliedFile.ErrorMessage = err.Error()
+	// 		failures = append(failures, appliedFile)
+	// 		log.Printf("RUN %v: %v\n%v\n%v", id, cmd, output, appliedFile.ErrorMessage)
+	// 	}
+	// }
+
+	// go monitorResults(wg, results)
+
+	// for result := range results {
+	// 	fmt.Printf("Folder: %v\n", result.Folder)
+	// 	fmt.Printf("Response: %v\n", result.Response)
+	// 	if result.Error != "" {
+	// 		fmt.Printf("Error: %v", result.Error)
+	// 		continue
+	// 	}
+	// }
+
+	fmt.Printf("END TIME %s \n", time.Now().String())
 
 	// fullRunQueue := make(chan bool, 1)
 	// runResults := make(chan run.Result, 5)

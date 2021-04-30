@@ -2,6 +2,7 @@
 package sysutil
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -40,4 +41,26 @@ func (fs *FileSystem) ListFolders(path string) ([]string, error) {
 	}
 
 	return folders, nil
+}
+
+func (fs *FileSystem) ChunkFolders(folders []string, nRoutines int) ([][]string, error) {
+
+	nChunks := len(folders) / nRoutines
+
+	fmt.Println("Number of folders per chunk", nChunks)
+
+	var folderChunks [][]string
+	for {
+		if len(folders) == 0 {
+			break
+		}
+
+		if len(folders) < nChunks {
+			nChunks = len(folders)
+		}
+
+		folderChunks = append(folderChunks, folders[0:nChunks])
+		folders = folders[nChunks:]
+	}
+	return folderChunks, nil
 }
