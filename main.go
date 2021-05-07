@@ -9,12 +9,8 @@ import (
 	"sync"
 	"time"
 
-	sysutil "github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
-)
-
-const (
-	workerCount = 1
-	logLevel    = -1
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
 // Main function
@@ -51,7 +47,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	results := make(chan Results)
+
+	results := make(chan apply.Result, 5)
+
+	applier := &apply.Applier{
+		results,
+	}
 
 	wg := &sync.WaitGroup{}
 
@@ -61,11 +62,11 @@ func main() {
 	fmt.Println("Number of Chunks", len(folderChunks))
 	for i := 0; i < len(folderChunks); i++ {
 		wg.Add(1)
-		go applyNamespaceDirs(wg, results, folderChunks[i])
+		go applier.applyNamespaceDirs(wg, folderChunks[i])
 
 	}
 
-	go monitorResults(wg, results)
+	// go monitorResults(wg, results)
 
 	for result := range results {
 		fmt.Printf("Folder: %v\n", result.Folder)
