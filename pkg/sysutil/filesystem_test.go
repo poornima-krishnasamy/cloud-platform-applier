@@ -26,7 +26,7 @@ func TestListFolders(t *testing.T) {
 		t.Logf("Found directory %v\n", folder)
 	}
 
-	_, found := Find(folders, ns_folder)
+	_, found := sysutil.Find(folders, ns_folder)
 	if !found {
 		t.Errorf("Expected directory %v not found", ns_folder)
 	}
