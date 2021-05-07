@@ -35,16 +35,16 @@ func main() {
 
 	// clock := &sysutil.Clock{}
 
-	folders, err := sysutil.ListFolders(repoPath)
+	folders, err := sysutil.ListFolderPaths(repoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// for _, folder := range folders {
-	// 	fmt.Printf("Found directory %v\n", folder)
-	// }
+	for _, folder := range folders {
+		fmt.Printf("Found directory %v\n", folder)
+	}
 
-	fileSystem = &sysutil.FileSystem{}
+	fileSystem := &sysutil.FileSystem{}
 
 	folderChunks, err := fileSystem.ChunkFolders(folders, nRoutines)
 	if err != nil {
