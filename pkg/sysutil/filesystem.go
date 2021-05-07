@@ -18,7 +18,7 @@ type FileSystem struct{}
 
 // ListFolders take the path as input, list all the folders in the give path and
 // return a array of strings containing the list of folders
-func (fs *FileSystem) ListFolders(path string) ([]string, error) {
+func ListFolders(path string) ([]string, error) {
 	var folders []string
 	err := filepath.Walk(path,
 		func(path string, info os.FileInfo, err error) error {

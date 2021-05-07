@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"log"
 	"runtime"
-	"sync"
 	"time"
 
-	sysutil "github.com/cloud-platform-applier/sysutil"
+	"github.com/cloud-platform-applier/pkg/sysutil/"
 )
 
 const (
@@ -36,9 +35,7 @@ func main() {
 
 	// clock := &sysutil.Clock{}
 
-	fileSystem := &sysutil.FileSystem{}
-
-	folders, err := fileSystem.ListFolders(repoPath)
+	folders, err := sysutil.ListFolders(repoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,9 +51,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	results := make(chan Results)
+	//results := make(chan Results)
 
-	wg := &sync.WaitGroup{}
+	//wg := &sync.WaitGroup{}
 
 	fmt.Println("Number of Chunks", len(folderChunks))
 
