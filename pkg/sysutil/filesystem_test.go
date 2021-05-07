@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cloud-platform-applier/pkg/sysutil"
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
 func TestListFolders(t *testing.T) {

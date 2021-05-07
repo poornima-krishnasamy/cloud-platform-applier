@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cloud-platform-applier/pkg/sysutil/"
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
 const (
