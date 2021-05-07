@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"sync"
 	"time"
 
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
+	sysutil "github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
 const (
@@ -50,85 +51,30 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	results := make(chan Results)
 
-	//results := make(chan Results)
+	wg := &sync.WaitGroup{}
 
-	//wg := &sync.WaitGroup{}
+	// TODO: create a pool of threads and spread the folders to the given threads. This is because
+	// The number of max threads which can call the AWS api should be limited to avoid exceeding the rate limits
 
 	fmt.Println("Number of Chunks", len(folderChunks))
+	for i := 0; i < len(folderChunks); i++ {
+		wg.Add(1)
+		go applyNamespaceDirs(wg, results, folderChunks[i])
 
-	// for i := 0; i < len(folderChunks); i++ {
-	// 	wg.Add(1)
-	// 	go applyNamespaceDirs(wg, results, folderChunks[i])
+	}
 
-	// }
+	go monitorResults(wg, results)
 
-	// if err := kube.CheckVersion(); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// successes = []ApplyAttempt{}
-	// failures = []ApplyAttempt{}
-
-	// for _, path := range applyList {
-	// 	log.Printf("RUN Applying file %v", path)
-	// 	cmd, output, err := kube.Apply(path)
-	// 	success := (err == nil)
-	// 	appliedFile := ApplyAttempt{path, cmd, output, ""}
-	// 	if success {
-	// 		successes = append(successes, appliedFile)
-	// 		log.Printf("RUN %v: %v\n%v", id, cmd, output)
-	// 	} else {
-	// 		appliedFile.ErrorMessage = err.Error()
-	// 		failures = append(failures, appliedFile)
-	// 		log.Printf("RUN %v: %v\n%v\n%v", id, cmd, output, appliedFile.ErrorMessage)
-	// 	}
-	// }
-
-	// go monitorResults(wg, results)
-
-	// for result := range results {
-	// 	fmt.Printf("Folder: %v\n", result.Folder)
-	// 	fmt.Printf("Response: %v\n", result.Response)
-	// 	if result.Error != "" {
-	// 		fmt.Printf("Error: %v", result.Error)
-	// 		continue
-	// 	}
-	// }
+	for result := range results {
+		fmt.Printf("Folder: %v\n", result.Folder)
+		fmt.Printf("Response: %v\n", result.Response)
+		if result.Error != "" {
+			fmt.Printf("Error: %v", result.Error)
+			continue
+		}
+	}
 
 	fmt.Printf("END TIME %s \n", time.Now().String())
-
-	// fullRunQueue := make(chan bool, 1)
-	// runResults := make(chan run.Result, 5)
-	// errors := make(chan error)
-
-	// runCount := make(chan int)
-
-	// kubeClient := &kube.Client{
-	// 	Server:   server,
-	// 	LogLevel: logLevel,
-	// }
-	// kubeClient.Configure()
-
-	// runner := &run.Runner{
-	// 	clock,
-	// 	fullRunQueue,
-	// 	runResults,
-	// 	errors,
-	// }
-
-	// // scheduler := &run.Scheduler{fullRunQueue, errors, ""}
-
-	// // scheduler.Start()
-	// go runner.StartFullLoop()
-
-	// for err := range errors {
-	// 	log.Fatal(err)
-	// }
-
-	// ctx = signals.SetupSignalHandler()
-	// <-ctx.Done()
-	// log.Logger("kube-applier").Info("Interrupted, shutting down...")
-	// scheduler.Stop()
-	// runner.Stop()
 }
