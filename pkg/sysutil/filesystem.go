@@ -67,7 +67,7 @@ func (fs *FileSystem) ChunkFolders(folders []string, nRoutines int) ([][]string,
 	return folderChunks, nil
 }
 
-func listFiles(path string) ([]string, error) {
+func ListFiles(path string) ([]string, error) {
 
 	var files []string
 

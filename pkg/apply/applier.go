@@ -13,12 +13,15 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -66,18 +69,20 @@ func (a *Applier) apply_kubernetes_files(folder string) {
 		panic(err.Error())
 	}
 
-	// create the clientset
-	// clientset, err := kubernetes.NewForConfig(config)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
+	//	create the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	dd, err := dynamic.NewForConfig(config)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	files, err := fileSystem.listFiles(folderpath)
+	fileSystem := &sysutil.FileSystem{}
+
+	files, err := fileSystem.ListFiles(folder)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,7 +110,7 @@ func (a *Applier) apply_kubernetes_files(folder string) {
 
 			unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
 
-			gr, err := restmapper.GetAPIGroupResources(c.Discovery())
+			gr, err := restmapper.GetAPIGroupResources(clientset.Discovery())
 			if err != nil {
 				log.Fatal(err)
 			}
