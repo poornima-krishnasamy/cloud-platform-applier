@@ -67,27 +67,41 @@ func (fs *FileSystem) ChunkFolders(folders []string, nRoutines int) ([][]string,
 	return folderChunks, nil
 }
 
-func ListFiles(path string) ([]string, error) {
+func (fs *FileSystem) ListFiles(path string) ([]string, error) {
 
 	var files []string
 
-	err := filepath.Walk(path,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				log.Fatalf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
-				return err
-			}
-			if info.IsDir() {
-				fmt.Printf("skipping a dir without errors: %+v \n", info.Name())
-				return filepath.SkipDir
-			}
+	err := filepath.WalkDir(path, func(path string, dir os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if filepath.Ext(dir.Name()) == ".yaml" {
 			files = append(files, path)
-			return nil
-		})
+		}
+		return nil
+	})
 	if err != nil {
 		log.Println(err)
 	}
-
 	return files, nil
+
+	// err := filepath.Walk(path,
+	// 	func(path string, info os.FileInfo, err error) error {
+	// 		if err != nil {
+	// 			log.Fatalf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
+	// 			return err
+	// 		}
+	// 		if info.IsDir() {
+	// 			fmt.Printf("skipping a dir without errors: %+v \n", info.Name())
+	// 			return filepath.SkipDir
+	// 		}
+	// 		files = append(files, path)
+	// 		return nil
+	// 	})
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+
+	// return files, nil
 
 }

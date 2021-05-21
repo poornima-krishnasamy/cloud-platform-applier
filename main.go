@@ -3,14 +3,17 @@ package main
 
 // Importing packages
 import (
+	"flag"
 	"fmt"
 	"log"
+	"path/filepath"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 )
 
 // Main function
@@ -50,21 +53,29 @@ func main() {
 
 	results := make(chan apply.Result, 5)
 
-	applier := &apply.Applier{
-		results,
-	}
+	applier := &apply.Applier{}
 
-	wg := &sync.WaitGroup{}
+	// Location of kubeconfig file
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	// use the current context in kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	// TODO: create a pool of threads and spread the folders to the given threads. This is because
 	// The number of max threads which can call the AWS api should be limited to avoid exceeding the rate limits
 
 	fmt.Println("Number of Chunks", len(folderChunks))
-	for i := 0; i < len(folderChunks); i++ {
-		wg.Add(1)
-		go applier.ApplyNamespaceDirs(wg, folderChunks[i])
 
-	}
+	applier.Apply(folderChunks, config)
 
 	// go monitorResults(wg, results)
 

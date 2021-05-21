@@ -1,31 +1,19 @@
 package apply
 
 import (
-	"bytes"
 	"context"
-	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sync"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	papply "github.com/pytimer/k8sutil/apply"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/rest"
 )
+
+var config *rest.Config
 
 type Applier struct {
 	RunResults chan<- Result
@@ -41,175 +29,122 @@ const (
 	nRoutines = 2
 )
 
-func (a *Applier) ApplyNamespaceDirs(wg *sync.WaitGroup, chunkFolder []string) {
-	defer wg.Done()
+func (a *Applier) Apply(folderChunks [][]string, kubeconfig *rest.Config) {
+	config = kubeconfig
 
-	for _, folder := range chunkFolder {
+	// wg := &sync.WaitGroup{}
 
-		a.apply_kubernetes_files(folder)
-		// a.apply_terraform(folder)
+	for i := 0; i < len(folderChunks); i++ {
+		// wg.Add(1)
+		applyNamespaceDirs(folderChunks[i])
+
 	}
 
 }
 
-func (a *Applier) apply_kubernetes_files(folder string) {
+func applyNamespaceDirs(chunkFolder []string) {
 
-	// Location of kubeconfig file
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	// defer wg.Done()
+
+	for _, folder := range chunkFolder {
+
+		apply_kubernetes_files(folder)
+		// a.apply_terraform(folder)
 	}
-	flag.Parse()
+}
 
-	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+func apply_kubernetes_files(folder string) {
+
+	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
-
-	//	create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
 	if err != nil {
 		panic(err.Error())
-	}
-
-	dd, err := dynamic.NewForConfig(config)
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	fileSystem := &sysutil.FileSystem{}
 
 	files, err := fileSystem.ListFiles(folder)
 	if err != nil {
-		log.Fatal(err)
+		panic(err.Error())
 	}
+	ctx := context.Background()
 
 	for _, file := range files {
 
-		f, err := ioutil.ReadFile(file)
+		fmt.Println("Applying file %s", file)
+
+		content, err := ioutil.ReadFile(file)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("%q \n", string(f))
 
-		decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(f), 100)
-		for {
-			var rawObj runtime.RawExtension
-			if err = decoder.Decode(&rawObj); err != nil {
-				break
-			}
-
-			obj, gvk, err := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
-			unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
-
-			gr, err := restmapper.GetAPIGroupResources(clientset.Discovery())
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			mapper := restmapper.NewDiscoveryRESTMapper(gr)
-			mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			var dri dynamic.ResourceInterface
-			if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-				if unstructuredObj.GetNamespace() == "" {
-					unstructuredObj.SetNamespace("default")
-				}
-				dri = dd.Resource(mapping.Resource).Namespace(unstructuredObj.GetNamespace())
-			} else {
-				dri = dd.Resource(mapping.Resource)
-			}
-
-			if _, err := dri.Create(context.Background(), unstructuredObj, metav1.CreateOptions{}); err != nil {
-				log.Fatal(err)
-			}
+		applyOptions := papply.NewApplyOptions(dynamicClient, discoveryClient)
+		if err := applyOptions.Apply(ctx, []byte(content)); err != nil {
+			log.Fatalf("apply error: %v", err)
 		}
-		if err != io.EOF {
-			log.Fatal("eof ", err)
-		}
+
 	}
-	/* var outb, errb bytes.Buffer
-
-	kubectlArgs := []string{"-n", filepath.Base(folder), "apply", "-f", folder}
-
-	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
-
-	kubectlCommand.Stdout = &outb
-	kubectlCommand.Stderr = &errb
-	kubectlCommand.Run()
-	*/
-
-	// result := &Result{Response: errb.String(), Error: errb.String(), Folder: folder}
-
-	// a.RunResults <- *result
 
 }
-func (a *Applier) apply_terraform(folder string) {
 
-	// Get the value of an Environment Variable
-	bucket := os.Getenv("PIPELINE_STATE_BUCKET")
-	key_prefix := os.Getenv("PIPELINE_STATE_KEY_PREFIX")
-	lock_table := os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE")
-	region := os.Getenv("PIPELINE_STATE_REGION")
-	cluster := os.Getenv("PIPELINE_CLUSTER")
+// func (a *Applier) apply_terraform(folder string) {
 
-	// //Checking that an environment variable is present or not.
+// 	// Get the value of an Environment Variable
+// 	bucket := os.Getenv("PIPELINE_STATE_BUCKET")
+// 	key_prefix := os.Getenv("PIPELINE_STATE_KEY_PREFIX")
+// 	lock_table := os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE")
+// 	region := os.Getenv("PIPELINE_STATE_REGION")
+// 	cluster := os.Getenv("PIPELINE_CLUSTER")
 
-	key := key_prefix + cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
+// 	// //Checking that an environment variable is present or not.
 
-	// // err := os.RemoveAll(filepath.Join(folder, ".terraform"))
-	// // if err != nil {
-	// // 	result = Result{Error: "Cant remove .terraform folders", Response: "", Folder: folder}
-	// // 	results <- result
-	// // 	return
-	// // }
+// 	key := key_prefix + cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
 
-	var outb, errb bytes.Buffer
+// 	// // err := os.RemoveAll(filepath.Join(folder, ".terraform"))
+// 	// // if err != nil {
+// 	// // 	result = Result{Error: "Cant remove .terraform folders", Response: "", Folder: folder}
+// 	// // 	results <- result
+// 	// // 	return
+// 	// // }
 
-	kubectlArgs := []string{
-		"init",
-		fmt.Sprintf("%s=bucket=%s", "-backend-config", bucket),
-		fmt.Sprintf("%s=key=%s", "-backend-config", key),
-		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", lock_table),
-		fmt.Sprintf("%s=region=%s", "-backend-config", region)}
+// 	var outb, errb bytes.Buffer
 
-	Command := exec.Command("terraform", kubectlArgs...)
+// 	kubectlArgs := []string{
+// 		"init",
+// 		fmt.Sprintf("%s=bucket=%s", "-backend-config", bucket),
+// 		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+// 		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", lock_table),
+// 		fmt.Sprintf("%s=region=%s", "-backend-config", region)}
 
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
+// 	Command := exec.Command("terraform", kubectlArgs...)
 
-	kubectlArgs = []string{"plan"}
+// 	Command.Dir = folder + "/resources"
+// 	Command.Stdout = &outb
+// 	Command.Stderr = &errb
+// 	Command.Run()
 
-	Command = exec.Command("terraform", kubectlArgs...)
+// 	kubectlArgs = []string{"plan"}
 
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
+// 	Command = exec.Command("terraform", kubectlArgs...)
 
-	kubectlArgs = []string{"apply"}
+// 	Command.Dir = folder + "/resources"
+// 	Command.Stdout = &outb
+// 	Command.Stderr = &errb
+// 	Command.Run()
 
-	Command = exec.Command("terraform", kubectlArgs...)
+// 	kubectlArgs = []string{"apply"}
 
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
+// 	Command = exec.Command("terraform", kubectlArgs...)
 
-	result := &Result{Response: outb.String(), Error: errb.String(), Folder: folder}
+// 	Command.Dir = folder + "/resources"
+// 	Command.Stdout = &outb
+// 	Command.Stderr = &errb
+// 	Command.Run()
 
-	a.RunResults <- *result
-}
+// 	result := &Result{Response: outb.String(), Error: errb.String(), Folder: folder}
+
+// 	a.RunResults <- *result
+// }
