@@ -62,7 +62,7 @@ func main() {
 	fmt.Println("Number of Chunks", len(folderChunks))
 	for i := 0; i < len(folderChunks); i++ {
 		wg.Add(1)
-		go applier.applyNamespaceDirs(wg, folderChunks[i])
+		go applier.ApplyNamespaceDirs(wg, folderChunks[i])
 
 	}
 
