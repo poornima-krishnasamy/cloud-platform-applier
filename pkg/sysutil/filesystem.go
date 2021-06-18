@@ -8,14 +8,6 @@ import (
 	"path/filepath"
 )
 
-// FileSystemInterface allows for mocking out the functionality of FileSystem to avoid calls to the actual file system during testing.
-type FileSystemInterface interface {
-	ListFolderPaths(path string) ([]string, error)
-}
-
-// FileSystem provides utility functions for interacting with the file system.
-type FileSystem struct{}
-
 // ListFolders take the path as input, list all the folders in the give path and
 // return a array of strings containing the list of folders
 func ListFolderPaths(path string) ([]string, error) {
@@ -45,7 +37,7 @@ func ListFolderPaths(path string) ([]string, error) {
 	return folders, nil
 }
 
-func (fs *FileSystem) ChunkFolders(folders []string, nRoutines int) ([][]string, error) {
+func ChunkFolders(folders []string, nRoutines int) ([][]string, error) {
 
 	nChunks := len(folders) / nRoutines
 
@@ -67,7 +59,7 @@ func (fs *FileSystem) ChunkFolders(folders []string, nRoutines int) ([][]string,
 	return folderChunks, nil
 }
 
-func (fs *FileSystem) ListFiles(path string) ([]string, error) {
+func ListFiles(path string) ([]string, error) {
 
 	var files []string
 

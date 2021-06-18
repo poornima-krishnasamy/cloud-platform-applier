@@ -1,150 +1,176 @@
 package apply
 
 import (
-	"context"
+	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
-	papply "github.com/pytimer/k8sutil/apply"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
 )
 
-var config *rest.Config
-
+// Applier makes apply calls for a list of files.
 type Applier struct {
-	RunResults chan<- Result
+	RepoPath   string
+	RunResults chan<- Results
 }
 
-type Result struct {
-	Response string
-	Error    string
-	Folder   string
+type Results struct {
+	Start     string
+	Finish    string
+	Successes []ApplyAttempt
+	Failures  []ApplyAttempt
+}
+
+type ApplyAttempt struct {
+	FilePath     string
+	Output       string
+	ErrorMessage string
 }
 
 const (
 	nRoutines = 2
 )
 
-func (a *Applier) Apply(folderChunks [][]string, kubeconfig *rest.Config) {
-	config = kubeconfig
+func (a *Applier) FullRun() {
 
 	// wg := &sync.WaitGroup{}
 
+	folders, err := sysutil.ListFolderPaths(a.RepoPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	folderChunks, err := sysutil.ChunkFolders(folders, nRoutines)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for i := 0; i < len(folderChunks); i++ {
 		// wg.Add(1)
-		applyNamespaceDirs(folderChunks[i])
+
+		start := time.Now().String()
+		successes, failures := a.applyNamespaceDirs(folderChunks[i])
+
+		finish := time.Now().String()
+
+		newRun := &Results{start, finish, successes, failures}
+
+		a.RunResults <- *newRun
 
 	}
 
 }
 
-func applyNamespaceDirs(chunkFolder []string) {
-
-	// defer wg.Done()
+func (a *Applier) applyNamespaceDirs(chunkFolder []string) (successes []ApplyAttempt, failures []ApplyAttempt) {
 
 	for _, folder := range chunkFolder {
 
-		apply_kubernetes_files(folder)
-		// a.apply_terraform(folder)
+		log.Printf("RUN : Applying file %v", folder)
+		output, err := a.ApplyKubectl(folder)
+		success := (err == "")
+		appliedFile := ApplyAttempt{folder, output, ""}
+		if success {
+			successes = append(successes, appliedFile)
+			log.Printf("RUN : %v", output)
+		} else {
+			appliedFile.ErrorMessage = err
+			failures = append(failures, appliedFile)
+			log.Printf("RUN : %v\n%v", output, appliedFile.ErrorMessage)
+		}
 	}
+	return successes, failures
 }
 
-func apply_kubernetes_files(folder string) {
+// Apply attempts to "kubectl apply" the file located at path.
+// It returns the full apply command and its output.
+func (a *Applier) ApplyKubectl(folder string) (output string, err string) {
 
-	dynamicClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+	var outb, errb bytes.Buffer
 
-	fileSystem := &sysutil.FileSystem{}
+	kubectlArgs := []string{"-n", filepath.Base(folder), "apply", "-f", folder}
 
-	files, err := fileSystem.ListFiles(folder)
-	if err != nil {
-		panic(err.Error())
-	}
-	ctx := context.Background()
+	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
 
-	for _, file := range files {
+	kubectlCommand.Stdout = &outb
+	kubectlCommand.Stderr = &errb
+	kubectlCommand.Run()
 
-		fmt.Println("Applying file %s", file)
-
-		content, err := ioutil.ReadFile(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		applyOptions := papply.NewApplyOptions(dynamicClient, discoveryClient)
-		if err := applyOptions.Apply(ctx, []byte(content)); err != nil {
-			log.Fatalf("apply error: %v", err)
-		}
-
-	}
+	return outb.String(), errb.String()
 
 }
 
-// func (a *Applier) apply_terraform(folder string) {
+func (a *Applier) ApplyTerraform(folder string) (output string, err string) {
 
-// 	// Get the value of an Environment Variable
-// 	bucket := os.Getenv("PIPELINE_STATE_BUCKET")
-// 	key_prefix := os.Getenv("PIPELINE_STATE_KEY_PREFIX")
-// 	lock_table := os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE")
-// 	region := os.Getenv("PIPELINE_STATE_REGION")
-// 	cluster := os.Getenv("PIPELINE_CLUSTER")
+	// Get the value of an Environment Variable
+	bucket := os.Getenv("PIPELINE_STATE_BUCKET")
+	key_prefix := os.Getenv("PIPELINE_STATE_KEY_PREFIX")
+	lock_table := os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE")
+	region := os.Getenv("PIPELINE_STATE_REGION")
+	cluster := os.Getenv("PIPELINE_CLUSTER")
 
-// 	// //Checking that an environment variable is present or not.
+	key := key_prefix + cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
 
-// 	key := key_prefix + cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
+	var outb, errb bytes.Buffer
 
-// 	// // err := os.RemoveAll(filepath.Join(folder, ".terraform"))
-// 	// // if err != nil {
-// 	// // 	result = Result{Error: "Cant remove .terraform folders", Response: "", Folder: folder}
-// 	// // 	results <- result
-// 	// // 	return
-// 	// // }
+	kubectlArgs := []string{
+		"init",
+		fmt.Sprintf("%s=bucket=%s", "-backend-config", bucket),
+		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", lock_table),
+		fmt.Sprintf("%s=region=%s", "-backend-config", region)}
 
-// 	var outb, errb bytes.Buffer
+	Command := exec.Command("terraform", kubectlArgs...)
 
-// 	kubectlArgs := []string{
-// 		"init",
-// 		fmt.Sprintf("%s=bucket=%s", "-backend-config", bucket),
-// 		fmt.Sprintf("%s=key=%s", "-backend-config", key),
-// 		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", lock_table),
-// 		fmt.Sprintf("%s=region=%s", "-backend-config", region)}
+	Command.Dir = folder + "/resources"
+	Command.Stdout = &outb
+	Command.Stderr = &errb
+	Command.Run()
 
-// 	Command := exec.Command("terraform", kubectlArgs...)
+	kubectlArgs = []string{"plan"}
 
-// 	Command.Dir = folder + "/resources"
-// 	Command.Stdout = &outb
-// 	Command.Stderr = &errb
-// 	Command.Run()
+	Command = exec.Command("terraform", kubectlArgs...)
 
-// 	kubectlArgs = []string{"plan"}
+	Command.Dir = folder + "/resources"
+	Command.Stdout = &outb
+	Command.Stderr = &errb
+	Command.Run()
+	return outb.String(), errb.String()
 
-// 	Command = exec.Command("terraform", kubectlArgs...)
+}
 
-// 	Command.Dir = folder + "/resources"
-// 	Command.Stdout = &outb
-// 	Command.Stderr = &errb
-// 	Command.Run()
+func (a *Applier) PlanTerraform(folder string) (output string, err string) {
 
-// 	kubectlArgs = []string{"apply"}
+	// Get the value of an Environment Variable
+	bucket := os.Getenv("PIPELINE_STATE_BUCKET")
+	key_prefix := os.Getenv("PIPELINE_STATE_KEY_PREFIX")
+	lock_table := os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE")
+	region := os.Getenv("PIPELINE_STATE_REGION")
+	cluster := os.Getenv("PIPELINE_CLUSTER")
 
-// 	Command = exec.Command("terraform", kubectlArgs...)
+	key := key_prefix + cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
 
-// 	Command.Dir = folder + "/resources"
-// 	Command.Stdout = &outb
-// 	Command.Stderr = &errb
-// 	Command.Run()
+	var outb, errb bytes.Buffer
 
-// 	result := &Result{Response: outb.String(), Error: errb.String(), Folder: folder}
+	kubectlArgs := []string{
+		"init",
+		fmt.Sprintf("%s=bucket=%s", "-backend-config", bucket),
+		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", lock_table),
+		fmt.Sprintf("%s=region=%s", "-backend-config", region)}
 
-// 	a.RunResults <- *result
-// }
+	Command := exec.Command("terraform", kubectlArgs...)
+
+	Command.Dir = folder + "/resources"
+	Command.Stdout = &outb
+	Command.Stderr = &errb
+	Command.Run()
+
+	kubectlArgs = []string{"apply"}
+
+	Command = exec.Command("terraform", kubectlArgs...)
+	return outb.String(), errb.String()
+}
