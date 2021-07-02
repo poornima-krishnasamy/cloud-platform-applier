@@ -6,11 +6,27 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 )
+
+func PrepareFolders(config *config.EnvPipelineConfig) [][]string {
+
+	folders, err := listFolderPaths(config.RepoPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	folderChunks, err := chunkFolders(folders, config.NumRoutines)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return folderChunks
+}
 
 // ListFolders take the path as input, list all the folders in the give path and
 // return a array of strings containing the list of folders
-func ListFolderPaths(path string) ([]string, error) {
+func listFolderPaths(path string) ([]string, error) {
 	var folders []string
 
 	err := filepath.Walk(path,
@@ -37,7 +53,7 @@ func ListFolderPaths(path string) ([]string, error) {
 	return folders, nil
 }
 
-func ChunkFolders(folders []string, nRoutines int) ([][]string, error) {
+func chunkFolders(folders []string, nRoutines int) ([][]string, error) {
 
 	nChunks := len(folders) / nRoutines
 
@@ -76,24 +92,5 @@ func ListFiles(path string) ([]string, error) {
 		log.Println(err)
 	}
 	return files, nil
-
-	// err := filepath.Walk(path,
-	// 	func(path string, info os.FileInfo, err error) error {
-	// 		if err != nil {
-	// 			log.Fatalf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
-	// 			return err
-	// 		}
-	// 		if info.IsDir() {
-	// 			fmt.Printf("skipping a dir without errors: %+v \n", info.Name())
-	// 			return filepath.SkipDir
-	// 		}
-	// 		files = append(files, path)
-	// 		return nil
-	// 	})
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-
-	// return files, nil
 
 }

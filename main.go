@@ -4,17 +4,15 @@ package main
 // Importing packages
 import (
 	"fmt"
-	"log"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 )
 
 // Main function
-// env vars: REPO_PATH
 func main() {
 
 	fmt.Printf("START TIME %s \n", time.Now().String())
@@ -23,31 +21,25 @@ func main() {
 	fmt.Println("NumCPU", runtime.NumCPU())
 	fmt.Println("GOMAXPROCS", runtime.GOMAXPROCS(0))
 
-	const nRoutines int = 3
-	wg := &sync.WaitGroup{}
+	config := config.NewEnvPipelineConfig()
 
-	repoPath := sysutil.GetRequiredEnvString("REPO_PATH")
-	// clusterName := sysutil.GetRequiredEnvString("TF_VAR_cluster_name")
-	// clusterStateBucket := sysutil.GetRequiredEnvString("TF_VAR_cluster_state_bucket")
-	// clusterStateKey := sysutil.GetRequiredEnvString("TF_VAR_cluster_state_key")
+	//wg := &sync.WaitGroup{}
 
 	// clock := &sysutil.Clock{}
 
-	runResults := make(chan apply.Results, 5)
+	// runResults := make(chan apply.Results, 5)
 
-	applier := &apply.Applier{RepoPath: repoPath, RunResults: runResults}
-
-	applier.FullRun()
+	apply.FullRun(config)
 
 	// TODO Fix channel output
 
-	go monitorResults(wg, runResults)
-	go func() {
-		for result := range runResults {
-			log.Printf("Updating successes Run %v.", result.Successes)
-			log.Printf("Updating failure from Run %v.", result.Failures)
-		}
-	}()
+	// go monitorResults(wg, runResults)
+	// go func() {
+	// 	for result := range runResults {
+	// 		log.Printf("Updating successes Run %v.", result.Successes)
+	// 		log.Printf("Updating failure from Run %v.", result.Failures)
+	// 	}
+	// }()
 
 	fmt.Printf("END TIME %s \n", time.Now().String())
 }
