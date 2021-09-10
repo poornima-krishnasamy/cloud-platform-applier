@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
@@ -29,22 +28,14 @@ func main() {
 
 	// runResults := make(chan apply.Results, 5)
 
-	apply.FullRun(config)
+	results := apply.FullRun(config)
 
-	// TODO Fix channel output
-
-	// go monitorResults(wg, runResults)
-	// go func() {
-	// 	for result := range runResults {
-	// 		log.Printf("Updating successes Run %v.", result.Successes)
-	// 		log.Printf("Updating failure from Run %v.", result.Failures)
-	// 	}
-	// }()
+	fmt.Printf("Printing Failures \n")
+	for _, result := range results {
+		if len(result.Failures) > 0 {
+			fmt.Println(result.Failures)
+		}
+	}
 
 	fmt.Printf("END TIME %s \n", time.Now().String())
-}
-
-func monitorResults(wg *sync.WaitGroup, runResults chan apply.Results) {
-	wg.Wait()
-	close(runResults)
 }

@@ -10,9 +10,9 @@ import (
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 )
 
-func PrepareFolders(config *config.EnvPipelineConfig) [][]string {
+func GetFolderChunks(config *config.EnvPipelineConfig) [][]string {
 
-	folders, err := listFolderPaths(config.RepoPath)
+	folders, err := ListFolderPaths(config.RepoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func PrepareFolders(config *config.EnvPipelineConfig) [][]string {
 
 // ListFolders take the path as input, list all the folders in the give path and
 // return a array of strings containing the list of folders
-func listFolderPaths(path string) ([]string, error) {
+func ListFolderPaths(path string) ([]string, error) {
 	var folders []string
 
 	err := filepath.Walk(path,
