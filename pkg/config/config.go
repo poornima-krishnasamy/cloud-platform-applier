@@ -26,13 +26,3 @@ func NewEnvPipelineConfig() *EnvPipelineConfig {
 	}
 	return &env
 }
-
-func NewEnvPipelineTestConfig() *EnvPipelineConfig {
-
-	config := NewEnvPipelineConfig()
-
-	config.Cluster = "test"
-	config.RepoPath = "./"
-	config.StateBucket = "cloud-platform-"
-	return config
-}
