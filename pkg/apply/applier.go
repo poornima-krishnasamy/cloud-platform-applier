@@ -37,7 +37,7 @@ func FullRun(config *config.EnvPipelineConfig) (results []Results) {
 
 	//wg := &sync.WaitGroup{}
 
-	folderChunks := sysutil.PrepareFolders(config)
+	folderChunks := sysutil.GetFolderChunks(config)
 
 	//results := []Results{}
 	for i := 0; i < len(folderChunks); i++ {
@@ -60,28 +60,38 @@ func FullRun(config *config.EnvPipelineConfig) (results []Results) {
 func applyNamespaceDirs(config *config.EnvPipelineConfig, chunkFolder []string) (successes []ApplyAttempt, failures []ApplyAttempt) {
 
 	for _, folder := range chunkFolder {
+		output, err, isSuccess := applyNamespace(config, folder)
 
-		log.Printf("RUN : Applying file %v", folder)
-		outputKubectl, errKubectl := applyKubectl(config, folder)
-		successKubectl := (errKubectl == "")
-		outputTf, errTf := planTerraform(config, folder)
-		successTf := (errTf == "")
-
-		output := outputKubectl + "\n" + outputTf
-		err := errKubectl + errTf
-		success := successKubectl || successTf
-
-		appliedFile := ApplyAttempt{folder, output, ""}
-		if success {
-			successes = append(successes, appliedFile)
+		appliedStatus := ApplyAttempt{folder, output, ""}
+		if isSuccess {
+			successes = append(successes, appliedStatus)
 			// log.Printf("RUN : %v", output)
 		} else {
-			appliedFile.ErrorMessage = err
-			failures = append(failures, appliedFile)
-			// log.Printf("RUN : %v\n%v", output, appliedFile.ErrorMessage)
+			appliedStatus.ErrorMessage = err
+			failures = append(failures, appliedStatus)
+			//log.Printf("RUN : %v\n%v", output, appliedFile.ErrorMessage)
 		}
+
 	}
 	return successes, failures
+}
+
+func applyNamespace(config *config.EnvPipelineConfig, folder string) (string, string, bool) {
+	log.Printf("RUN : Applying file %v", folder)
+	outputKubectl, errKubectl := applyKubectl(config, folder)
+	successKubectl := (errKubectl == "")
+
+	outputInitTf, errInitTf := initTerraform(config, folder)
+	successInitTf := (errInitTf == "")
+
+	outputPlanTf, errPlanTf := planTerraform(config, folder)
+	successPlanTf := (errPlanTf == "")
+
+	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
+	err := errKubectl + "\n" + errInitTf + "\n" + errPlanTf
+	isSuccess := successKubectl && successInitTf && successPlanTf
+
+	return output, err, isSuccess
 }
 
 // Apply attempts to "kubectl apply" the file located at path.
@@ -104,59 +114,38 @@ func applyKubectl(config *config.EnvPipelineConfig, folder string) (output strin
 
 func applyTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
 
-	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
-
-	var outb, errb bytes.Buffer
-
-	kubectlArgs := []string{
-		"init",
-		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
-		fmt.Sprintf("%s=key=%s", "-backend-config", key),
-		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
-		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
-
-	Command := exec.Command("terraform", kubectlArgs...)
-
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
-
-	kubectlArgs = []string{"apply"}
-
-	Command = exec.Command("terraform", kubectlArgs...)
-
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
-	return outb.String(), errb.String()
+	tfArgs := []string{"apply"}
+	return runTerraform(folder, tfArgs)
 
 }
 
 func planTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
 
+	tfArgs := []string{"plan"}
+	return runTerraform(folder, tfArgs)
+
+}
+
+func initTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
+
 	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
 
-	var outb, errb bytes.Buffer
-
-	kubectlArgs := []string{
+	tfArgs := []string{
 		"init",
 		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
 		fmt.Sprintf("%s=key=%s", "-backend-config", key),
 		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
 		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
 
-	Command := exec.Command("terraform", kubectlArgs...)
+	return runTerraform(folder, tfArgs)
+}
 
-	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
+func runTerraform(folder string, tfArgs []string) (output string, err string) {
 
-	kubectlArgs = []string{"plan"}
+	var outb, errb bytes.Buffer
 
-	Command = exec.Command("terraform", kubectlArgs...)
+	Command := exec.Command("terraform", tfArgs...)
+
 	Command.Dir = folder + "/resources"
 	Command.Stdout = &outb
 	Command.Stderr = &errb
