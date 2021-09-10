@@ -18,7 +18,9 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // planCmd represents the plan command
@@ -37,8 +39,29 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	rootCmd.AddCommand(planCmd)
 
+	rootCmd.AddCommand(planCmd)
+	var config config.EnvPipelineConfig
+
+	planCmd.PersistentFlags().StringVarP(&config.StateBucket, "pipeline-state-bucket", "", "", "State bucket where terraform state file is stored")
+	planCmd.PersistentFlags().StringVarP(&config.StateKeyPrefix, "pipeline-state-key-prefix", "", "", "State buucket key prefix location")
+	planCmd.PersistentFlags().StringVarP(&config.StateLockTable, "pipeline-state-locktable", "", "", "DynamoDB table to store the state md5")
+
+	planCmd.PersistentFlags().StringVarP(&config.StateRegion, "pipeline-state-region", "", "", "AWS Region")
+
+	planCmd.PersistentFlags().StringVarP(&config.Cluster, "pipeline-cluster", "", "", "Cluster to which the manifest will be applied")
+
+	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "pipeline-repo-path", "", "", "Repository folder path where the namespace manifest are")
+	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "pipeline-routines", "", 2, "Num of go routines to split the folder into")
+
+	planCmd.MarkPersistentFlagRequired("pipeline-state-bucket")
+	planCmd.MarkPersistentFlagRequired("pipeline-state-key-prefix")
+	planCmd.MarkPersistentFlagRequired("pipeline-state-locktable")
+	planCmd.MarkPersistentFlagRequired("pipeline-state-region")
+	planCmd.MarkPersistentFlagRequired("pipeline-cluster")
+	planCmd.MarkPersistentFlagRequired("pipeline-repo-path")
+
+	addCommonFlags(plan, &options)
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
@@ -48,4 +71,9 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// planCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func addCommonFlags(cmd *cobra.Command, o *config.EnvPipelineConfig) {
+	viper.AutomaticEnv()
+
 }
