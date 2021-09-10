@@ -1,41 +1,22 @@
-// Package main Declaration
+/*
+Copyright © 2021 NAME HERE <EMAIL ADDRESS>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package main
 
-// Importing packages
-import (
-	"fmt"
-	"runtime"
-	"time"
+import "github.com/poornima-krishnasamy/cloud-platform-applier/cmd"
 
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
-)
-
-// Main function
 func main() {
-
-	fmt.Printf("START TIME %s \n", time.Now().String())
-
-	fmt.Println("Version", runtime.Version())
-	fmt.Println("NumCPU", runtime.NumCPU())
-	fmt.Println("GOMAXPROCS", runtime.GOMAXPROCS(0))
-
-	config := config.NewEnvPipelineConfig()
-
-	//wg := &sync.WaitGroup{}
-
-	// clock := &sysutil.Clock{}
-
-	// runResults := make(chan apply.Results, 5)
-
-	results := apply.FullRun(config)
-
-	fmt.Printf("Printing Failures \n")
-	for _, result := range results {
-		if len(result.Failures) > 0 {
-			fmt.Println(result.Failures)
-		}
-	}
-
-	fmt.Printf("END TIME %s \n", time.Now().String())
+	cmd.Execute()
 }
