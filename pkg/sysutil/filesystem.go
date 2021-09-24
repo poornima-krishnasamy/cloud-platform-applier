@@ -6,18 +6,16 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 )
 
-func GetFolderChunks(config *config.EnvPipelineConfig) [][]string {
+func GetFolderChunks(repoPath string, numRoutines int) [][]string {
 
-	folders, err := ListFolderPaths(config.RepoPath)
+	folders, err := ListFolderPaths(repoPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	folderChunks, err := chunkFolders(folders, config.NumRoutines)
+	folderChunks, err := chunkFolders(folders, numRoutines)
 	if err != nil {
 		log.Fatal(err)
 	}

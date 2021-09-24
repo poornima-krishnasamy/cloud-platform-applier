@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
@@ -19,25 +18,29 @@ import (
 // }
 
 //Results collects the list of ApplyAttempt
-type Results struct {
-	Start     string
-	Finish    string
-	Successes []ApplyAttempt
-	Failures  []ApplyAttempt
-}
 
 // ApplyAttempt collects each of folder path, output and error message
 type ApplyAttempt struct {
-	FilePath     string
-	Output       string
-	ErrorMessage string
+	FilePath, Output, ErrorMessage string
 }
 
-func FullRun(config *config.EnvPipelineConfig) (results []Results) {
+type Results struct {
+	Start, Finish string
+	Successes     []ApplyAttempt
+	Failures      []ApplyAttempt
+}
+
+type ApplierConfig struct {
+	StateBucket, StateKeyPrefix, StateLockTable, StateRegion, Cluster, RepoPath string
+	NumRoutines                                                                 int
+	Folder                                                                      string
+}
+
+func FullRun(config *ApplierConfig) (results []Results) {
 
 	//wg := &sync.WaitGroup{}
 
-	folderChunks := sysutil.GetFolderChunks(config)
+	folderChunks := sysutil.GetFolderChunks(config.RepoPath, config.NumRoutines)
 
 	//results := []Results{}
 	for i := 0; i < len(folderChunks); i++ {
@@ -57,10 +60,10 @@ func FullRun(config *config.EnvPipelineConfig) (results []Results) {
 	return results
 }
 
-func applyNamespaceDirs(config *config.EnvPipelineConfig, chunkFolder []string) (successes []ApplyAttempt, failures []ApplyAttempt) {
+func applyNamespaceDirs(config *ApplierConfig, chunkFolder []string) (successes []ApplyAttempt, failures []ApplyAttempt) {
 
 	for _, folder := range chunkFolder {
-		output, err, isSuccess := applyNamespace(config, folder)
+		output, err, isSuccess := applyNamespace(config)
 
 		appliedStatus := ApplyAttempt{folder, output, ""}
 		if isSuccess {
@@ -76,15 +79,15 @@ func applyNamespaceDirs(config *config.EnvPipelineConfig, chunkFolder []string) 
 	return successes, failures
 }
 
-func applyNamespace(config *config.EnvPipelineConfig, folder string) (string, string, bool) {
-	log.Printf("RUN : Applying file %v", folder)
-	outputKubectl, errKubectl := applyKubectl(config, folder)
+func applyNamespace(config *ApplierConfig) (string, string, bool) {
+	log.Printf("RUN : Applying file %v", config.Folder)
+	outputKubectl, errKubectl := applyKubectl(config)
 	successKubectl := (errKubectl == "")
 
-	outputInitTf, errInitTf := initTerraform(config, folder)
+	outputInitTf, errInitTf := initTerraform(config)
 	successInitTf := (errInitTf == "")
 
-	outputPlanTf, errPlanTf := planTerraform(config, folder)
+	outputPlanTf, errPlanTf := planTerraform(config)
 	successPlanTf := (errPlanTf == "")
 
 	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
@@ -94,13 +97,39 @@ func applyNamespace(config *config.EnvPipelineConfig, folder string) (string, st
 	return output, err, isSuccess
 }
 
-// Apply attempts to "kubectl apply" the file located at path.
-// It returns the full apply command and its output.
-func applyKubectl(config *config.EnvPipelineConfig, folder string) (output string, err string) {
+func planNamespace(config *ApplierConfig) (string, string, bool) {
+	log.Printf("RUN :  file %v", config.Folder)
+	outputKubectl, errKubectl := planKubectl(config)
+	successKubectl := (errKubectl == "")
+
+	outputInitTf, errInitTf := initTerraform(config)
+	successInitTf := (errInitTf == "")
+
+	outputPlanTf, errPlanTf := planTerraform(config)
+	successPlanTf := (errPlanTf == "")
+
+	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
+	err := errKubectl + "\n" + errInitTf + "\n" + errPlanTf
+	isSuccess := successKubectl && successInitTf && successPlanTf
+
+	return output, err, isSuccess
+}
+
+func ExecutePlanNamespace(config *ApplierConfig) string {
+	_, err, _ := planNamespace(config)
+	if err != "" {
+		return err
+	}
+	return ""
+}
+
+// planKubectl attempts to dryn-run of "kubectl apply" to the files in the given folder.
+// It returns the apply command output and err.
+func planKubectl(config *ApplierConfig) (output string, err string) {
 
 	var outb, errb bytes.Buffer
 
-	kubectlArgs := []string{"-n", filepath.Base(folder), "apply", "-f", folder}
+	kubectlArgs := []string{"-n", filepath.Base(config.Folder), "apply", "--dry-run", "-f", config.Folder}
 
 	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
 
@@ -112,23 +141,41 @@ func applyKubectl(config *config.EnvPipelineConfig, folder string) (output strin
 
 }
 
-func applyTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
+// applyKubectl attempts to dryn-run of "kubectl apply" to the files in the given folder.
+// It returns the apply command output and err.
+func applyKubectl(config *ApplierConfig) (output string, err string) {
+
+	var outb, errb bytes.Buffer
+
+	kubectlArgs := []string{"-n", filepath.Base(config.Folder), "apply", "-f", config.Folder}
+
+	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
+
+	kubectlCommand.Stdout = &outb
+	kubectlCommand.Stderr = &errb
+	kubectlCommand.Run()
+
+	return outb.String(), errb.String()
+
+}
+
+func applyTerraform(config *ApplierConfig, folder string) (output string, err string) {
 
 	tfArgs := []string{"apply"}
 	return runTerraform(folder, tfArgs)
 
 }
 
-func planTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
+func planTerraform(config *ApplierConfig) (output string, err string) {
 
 	tfArgs := []string{"plan"}
-	return runTerraform(folder, tfArgs)
+	return runTerraform(config.Folder, tfArgs)
 
 }
 
-func initTerraform(config *config.EnvPipelineConfig, folder string) (output string, err string) {
+func initTerraform(config *ApplierConfig) (output string, err string) {
 
-	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(folder) + "/terraform.tfstate"
+	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
 
 	tfArgs := []string{
 		"init",
@@ -137,7 +184,7 @@ func initTerraform(config *config.EnvPipelineConfig, folder string) (output stri
 		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
 		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
 
-	return runTerraform(folder, tfArgs)
+	return runTerraform(config.Folder, tfArgs)
 }
 
 func runTerraform(folder string, tfArgs []string) (output string, err string) {

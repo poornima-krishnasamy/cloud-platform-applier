@@ -16,32 +16,45 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
+	"log"
+	"os"
 
-	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/config"
+	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
+	applier "github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-// planCmd represents the plan command
-var planCmd = &cobra.Command{
-	Use:   "plan",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
+// applierPlanCmd represents the plan command
+func applierPlanCmd() *cobra.Command {
+	var config apply.ApplierConfig
+	var folder string
+	planCmd := &cobra.Command{
+		Use:   "plan",
+		Short: "A brief description of your command",
+		Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
 
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("plan called")
-	},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			log.Printf("Starting Plan for namespace %v", config.Folder)
+
+			if err := applier.ExecutePlanNamespace(&config); err != "" {
+				log.Printf("Error executing Plan for namespace %v: %v", folder, err)
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	addCommonFlags(planCmd, &config)
+	return planCmd
 }
 
-func init() {
+func addCommonFlags(planCmd *cobra.Command, config *apply.ApplierConfig) {
 
-	rootCmd.AddCommand(planCmd)
-	var config config.EnvPipelineConfig
+	viper.AutomaticEnv()
 
 	planCmd.PersistentFlags().StringVarP(&config.StateBucket, "pipeline-state-bucket", "", "", "State bucket where terraform state file is stored")
 	planCmd.PersistentFlags().StringVarP(&config.StateKeyPrefix, "pipeline-state-key-prefix", "", "", "State buucket key prefix location")
@@ -54,26 +67,16 @@ func init() {
 	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "pipeline-repo-path", "", "", "Repository folder path where the namespace manifest are")
 	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "pipeline-routines", "", 2, "Num of go routines to split the folder into")
 
+	planCmd.PersistentFlags().StringVarP(&config.Folder, "pipeline-folder", "", "", "Name of the folder to do the plan")
+
 	planCmd.MarkPersistentFlagRequired("pipeline-state-bucket")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-key-prefix")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-locktable")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-region")
 	planCmd.MarkPersistentFlagRequired("pipeline-cluster")
 	planCmd.MarkPersistentFlagRequired("pipeline-repo-path")
-
-	addCommonFlags(plan, &options)
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// planCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// planCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func addCommonFlags(cmd *cobra.Command, o *config.EnvPipelineConfig) {
-	viper.AutomaticEnv()
-
-}
+// func init() {
+// 	rootCmd.AddCommand(applierPlanCmd())
+// }
