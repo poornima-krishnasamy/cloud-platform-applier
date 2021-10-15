@@ -117,6 +117,7 @@ func planNamespace(config *ApplierConfig) (string, string, bool) {
 
 func ExecutePlanNamespace(config *ApplierConfig) string {
 	_, err, _ := planNamespace(config)
+
 	if err != "" {
 		return err
 	}
@@ -133,6 +134,7 @@ func planKubectl(config *ApplierConfig) (output string, err string) {
 
 	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
 
+	kubectlCommand.Dir = config.RepoPath
 	kubectlCommand.Stdout = &outb
 	kubectlCommand.Stderr = &errb
 	kubectlCommand.Run()
@@ -151,6 +153,7 @@ func applyKubectl(config *ApplierConfig) (output string, err string) {
 
 	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
 
+	kubectlCommand.Dir = config.RepoPath + "/" + config.Folder
 	kubectlCommand.Stdout = &outb
 	kubectlCommand.Stderr = &errb
 	kubectlCommand.Run()

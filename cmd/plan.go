@@ -18,10 +18,12 @@ package cmd
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
 	applier "github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -56,25 +58,34 @@ func addCommonFlags(planCmd *cobra.Command, config *apply.ApplierConfig) {
 
 	viper.AutomaticEnv()
 
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+
 	planCmd.PersistentFlags().StringVarP(&config.StateBucket, "pipeline-state-bucket", "", "", "State bucket where terraform state file is stored")
 	planCmd.PersistentFlags().StringVarP(&config.StateKeyPrefix, "pipeline-state-key-prefix", "", "", "State buucket key prefix location")
-	planCmd.PersistentFlags().StringVarP(&config.StateLockTable, "pipeline-state-locktable", "", "", "DynamoDB table to store the state md5")
+	planCmd.PersistentFlags().StringVarP(&config.StateLockTable, "pipeline-terraform-state-lock-table", "", "", "DynamoDB table to store the state md5")
 
 	planCmd.PersistentFlags().StringVarP(&config.StateRegion, "pipeline-state-region", "", "", "AWS Region")
 
 	planCmd.PersistentFlags().StringVarP(&config.Cluster, "pipeline-cluster", "", "", "Cluster to which the manifest will be applied")
 
-	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "pipeline-repo-path", "", "", "Repository folder path where the namespace manifest are")
+	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "pipeline-repopath", "", "", "Repository folder path where the namespace manifest are")
 	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "pipeline-routines", "", 2, "Num of go routines to split the folder into")
 
 	planCmd.PersistentFlags().StringVarP(&config.Folder, "pipeline-folder", "", "", "Name of the folder to do the plan")
 
 	planCmd.MarkPersistentFlagRequired("pipeline-state-bucket")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-key-prefix")
-	planCmd.MarkPersistentFlagRequired("pipeline-state-locktable")
+	planCmd.MarkPersistentFlagRequired("pipeline-terraform-state-lock-table")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-region")
 	planCmd.MarkPersistentFlagRequired("pipeline-cluster")
-	planCmd.MarkPersistentFlagRequired("pipeline-repo-path")
+	planCmd.MarkPersistentFlagRequired("pipeline-repopath")
+	planCmd.MarkPersistentFlagRequired("pipeline-folder")
+
+	planCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		if viper.IsSet(f.Name) && viper.GetString(f.Name) != "" {
+			planCmd.PersistentFlags().Set(f.Name, viper.GetString(f.Name))
+		}
+	})
 }
 
 // func init() {
