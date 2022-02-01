@@ -1,7 +1,6 @@
 package apply
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"os/exec"
@@ -34,6 +33,7 @@ type ApplierConfig struct {
 	StateBucket, StateKeyPrefix, StateLockTable, StateRegion, Cluster, RepoPath string
 	NumRoutines                                                                 int
 	Folder                                                                      string
+	Dryrun                                                                      bool
 }
 
 func FullRun(config *ApplierConfig) (results []Results) {
@@ -63,14 +63,14 @@ func FullRun(config *ApplierConfig) (results []Results) {
 func applyNamespaceDirs(config *ApplierConfig, chunkFolder []string) (successes []ApplyAttempt, failures []ApplyAttempt) {
 
 	for _, folder := range chunkFolder {
-		output, err, isSuccess := applyNamespace(config)
+		output, err := applyNamespace(config)
 
 		appliedStatus := ApplyAttempt{folder, output, ""}
-		if isSuccess {
+		if err != nil {
 			successes = append(successes, appliedStatus)
 			// log.Printf("RUN : %v", output)
 		} else {
-			appliedStatus.ErrorMessage = err
+			appliedStatus.ErrorMessage = err.Error()
 			failures = append(failures, appliedStatus)
 			//log.Printf("RUN : %v\n%v", output, appliedFile.ErrorMessage)
 		}
@@ -79,104 +79,105 @@ func applyNamespaceDirs(config *ApplierConfig, chunkFolder []string) (successes 
 	return successes, failures
 }
 
-func applyNamespace(config *ApplierConfig) (string, string, bool) {
-	log.Printf("RUN : Applying file %v", config.Folder)
-	outputKubectl, errKubectl := applyKubectl(config)
-	successKubectl := (errKubectl == "")
-
-	outputInitTf, errInitTf := initTerraform(config)
-	successInitTf := (errInitTf == "")
-
-	outputPlanTf, errPlanTf := planTerraform(config)
-	successPlanTf := (errPlanTf == "")
-
-	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
-	err := errKubectl + "\n" + errInitTf + "\n" + errPlanTf
-	isSuccess := successKubectl && successInitTf && successPlanTf
-
-	return output, err, isSuccess
-}
-
-func planNamespace(config *ApplierConfig) (string, string, bool) {
+func applyNamespace(config *ApplierConfig) (string, error) {
 	log.Printf("RUN :  file %v", config.Folder)
-	outputKubectl, errKubectl := planKubectl(config)
-	successKubectl := (errKubectl == "")
+	outputKubectl, err := applyKubectl(config)
+	if err != nil {
+		err := fmt.Errorf("Error running kubectl dry-run on namespace %s: %v", config.Folder, err)
+		return "", err
 
-	outputInitTf, errInitTf := initTerraform(config)
-	successInitTf := (errInitTf == "")
-
-	outputPlanTf, errPlanTf := planTerraform(config)
-	successPlanTf := (errPlanTf == "")
-
-	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
-	err := errKubectl + "\n" + errInitTf + "\n" + errPlanTf
-	isSuccess := successKubectl && successInitTf && successPlanTf
-
-	return output, err, isSuccess
-}
-
-func ExecutePlanNamespace(config *ApplierConfig) string {
-	_, err, _ := planNamespace(config)
-
-	if err != "" {
-		return err
 	}
-	return ""
+
+	outputInitTf, err := initTerraform(config)
+	if err != nil {
+		err := fmt.Errorf("Error running terraform init on namespace %s: %v", config.Folder, err)
+		return "", err
+
+	}
+
+	outputApplyTf, err := applyTerraform(config)
+	if err != nil {
+		err := fmt.Errorf("Error running terraform plan  on namespace %s: %v", config.Folder, err)
+		return "", err
+
+	}
+	output := outputKubectl + "\n" + outputInitTf + "\n" + outputApplyTf
+
+	return output, err
 }
 
-// planKubectl attempts to dryn-run of "kubectl apply" to the files in the given folder.
-// It returns the apply command output and err.
-func planKubectl(config *ApplierConfig) (output string, err string) {
+func planNamespace(config *ApplierConfig) (string, error) {
+	log.Printf("RUN :  file %v", config.Folder)
+	outputKubectl, err := applyKubectl(config)
+	if err != nil {
+		err := fmt.Errorf("Error running kubectl dry-run on namespace %s: %v", config.Folder, err)
+		return "", err
 
-	var outb, errb bytes.Buffer
+	}
 
-	kubectlArgs := []string{"-n", filepath.Base(config.Folder), "apply", "--dry-run", "-f", config.Folder}
+	outputInitTf, err := initTerraform(config)
+	if err != nil {
+		err := fmt.Errorf("Error running terraform init on namespace %s: %v", config.Folder, err)
+		return "", err
 
-	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
+	}
 
-	kubectlCommand.Dir = config.RepoPath
-	kubectlCommand.Stdout = &outb
-	kubectlCommand.Stderr = &errb
-	kubectlCommand.Run()
+	outputPlanTf, err := planTerraform(config)
+	if err != nil {
+		err := fmt.Errorf("Error running terraform plan  on namespace %s: %v", config.Folder, err)
+		return "", err
 
-	return outb.String(), errb.String()
+	}
+	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
 
+	return output, err
+}
+
+func ExecutePlanNamespace(config *ApplierConfig) (output string, err error) {
+	output, err = planNamespace(config)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
 }
 
 // applyKubectl attempts to dryn-run of "kubectl apply" to the files in the given folder.
 // It returns the apply command output and err.
-func applyKubectl(config *ApplierConfig) (output string, err string) {
-
-	var outb, errb bytes.Buffer
+func applyKubectl(config *ApplierConfig) (output string, err error) {
 
 	kubectlArgs := []string{"-n", filepath.Base(config.Folder), "apply", "-f", config.Folder}
+
+	if config.Dryrun {
+		kubectlArgs = append(kubectlArgs, "--dry-run")
+	}
 
 	kubectlCommand := exec.Command("kubectl", kubectlArgs...)
 
 	kubectlCommand.Dir = config.RepoPath + "/" + config.Folder
-	kubectlCommand.Stdout = &outb
-	kubectlCommand.Stderr = &errb
-	kubectlCommand.Run()
+	outb, err := kubectlCommand.Output()
+	if err != nil {
+		return "", err
+	}
 
-	return outb.String(), errb.String()
+	return string(outb), nil
 
 }
 
-func applyTerraform(config *ApplierConfig, folder string) (output string, err string) {
+func applyTerraform(config *ApplierConfig) (output string, err error) {
 
 	tfArgs := []string{"apply"}
-	return runTerraform(folder, tfArgs)
+	return runTerraform(config.Folder, tfArgs)
 
 }
 
-func planTerraform(config *ApplierConfig) (output string, err string) {
+func planTerraform(config *ApplierConfig) (output string, err error) {
 
 	tfArgs := []string{"plan"}
 	return runTerraform(config.Folder, tfArgs)
 
 }
 
-func initTerraform(config *ApplierConfig) (output string, err string) {
+func initTerraform(config *ApplierConfig) (output string, err error) {
 
 	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
 
@@ -190,15 +191,15 @@ func initTerraform(config *ApplierConfig) (output string, err string) {
 	return runTerraform(config.Folder, tfArgs)
 }
 
-func runTerraform(folder string, tfArgs []string) (output string, err string) {
-
-	var outb, errb bytes.Buffer
+func runTerraform(folder string, tfArgs []string) (output string, err error) {
 
 	Command := exec.Command("terraform", tfArgs...)
 
 	Command.Dir = folder + "/resources"
-	Command.Stdout = &outb
-	Command.Stderr = &errb
-	Command.Run()
-	return outb.String(), errb.String()
+	outb, err := Command.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return string(outb), nil
 }

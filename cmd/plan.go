@@ -72,6 +72,7 @@ func addCommonFlags(planCmd *cobra.Command, config *apply.ApplierConfig) {
 	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "pipeline-routines", "", 2, "Num of go routines to split the folder into")
 
 	planCmd.PersistentFlags().StringVarP(&config.Folder, "pipeline-folder", "", "", "Name of the folder to do the plan")
+	planCmd.PersistentFlags().BoolVarP(&config.Dryrun, "dry-run", "", true, "dryrun option for kubectl")
 
 	planCmd.MarkPersistentFlagRequired("pipeline-state-bucket")
 	planCmd.MarkPersistentFlagRequired("pipeline-state-key-prefix")
