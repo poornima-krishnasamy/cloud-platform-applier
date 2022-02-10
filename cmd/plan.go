@@ -18,10 +18,8 @@ package cmd
 import (
 	"log"
 	"os"
-	"strings"
 
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
-	applier "github.com/poornima-krishnasamy/cloud-platform-applier/pkg/apply"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -30,7 +28,6 @@ import (
 // applierPlanCmd represents the plan command
 func applierPlanCmd() *cobra.Command {
 	var config apply.ApplierConfig
-	var folder string
 	planCmd := &cobra.Command{
 		Use:   "plan",
 		Short: "A brief description of your command",
@@ -43,9 +40,11 @@ to quickly create a Cobra application.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log.Printf("Starting Plan for namespace %v", config.Folder)
 
-			if err := applier.ExecutePlanNamespace(&config); err != "" {
-				log.Printf("Error executing Plan for namespace %v: %v", folder, err)
+			if output, err := apply.ExecutePlanNamespace(&config); err != nil {
+				log.Printf("Error executing Plan for namespace %v: %v", config.Folder, err)
 				os.Exit(1)
+			} else {
+				log.Printf("Executing plan successful with output %v:", output)
 			}
 			return nil
 		},
@@ -58,29 +57,28 @@ func addCommonFlags(planCmd *cobra.Command, config *apply.ApplierConfig) {
 
 	viper.AutomaticEnv()
 
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	//viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 
-	planCmd.PersistentFlags().StringVarP(&config.StateBucket, "pipeline-state-bucket", "", "", "State bucket where terraform state file is stored")
-	planCmd.PersistentFlags().StringVarP(&config.StateKeyPrefix, "pipeline-state-key-prefix", "", "", "State buucket key prefix location")
-	planCmd.PersistentFlags().StringVarP(&config.StateLockTable, "pipeline-terraform-state-lock-table", "", "", "DynamoDB table to store the state md5")
+	var TF_VAR_cluster_name, TF_VAR_cluster_state_bucket, TF_VAR_cluster_state_key, TF_VAR_kubernetes_cluster string
 
-	planCmd.PersistentFlags().StringVarP(&config.StateRegion, "pipeline-state-region", "", "", "AWS Region")
+	planCmd.PersistentFlags().StringVarP(&config.StateBucket, "PIPELINE_STATE_BUCKET", "", os.Getenv("PIPELINE_STATE_BUCKET"), "State bucket where terraform state file is stored")
+	planCmd.PersistentFlags().StringVarP(&config.StateKeyPrefix, "PIPELINE_STATE_KEY_PREFIX", "", os.Getenv("PIPELINE_STATE_KEY_PREFIX"), "State buucket key prefix location")
+	planCmd.PersistentFlags().StringVarP(&config.StateLockTable, "PIPELINE_TERRAFORM_STATE_LOCK_TABLE", "", os.Getenv("PIPELINE_TERRAFORM_STATE_LOCK_TABLE"), "DynamoDB table to store the state md5")
 
-	planCmd.PersistentFlags().StringVarP(&config.Cluster, "pipeline-cluster", "", "", "Cluster to which the manifest will be applied")
+	planCmd.PersistentFlags().StringVarP(&config.StateRegion, "PIPELINE_STATE_REGION", "", os.Getenv("PIPELINE_STATE_REGION"), "AWS Region")
 
-	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "pipeline-repopath", "", "", "Repository folder path where the namespace manifest are")
-	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "pipeline-routines", "", 2, "Num of go routines to split the folder into")
+	planCmd.PersistentFlags().StringVarP(&config.Cluster, "PIPELINE_CLUSTER", "", os.Getenv("PIPELINE_CLUSTER"), "Cluster to which the manifest will be applied")
 
-	planCmd.PersistentFlags().StringVarP(&config.Folder, "pipeline-folder", "", "", "Name of the folder to do the plan")
+	planCmd.PersistentFlags().StringVarP(&config.RepoPath, "PIPELINE_REPOPATH", "", os.Getenv("PIPELINE_REPOPATH"), "Repository folder path where the namespace manifest are")
+	planCmd.PersistentFlags().IntVarP(&config.NumRoutines, "PIPELINE_ROUTINES", "", 2, "Num of go routines to split the folder into")
+
+	planCmd.PersistentFlags().StringVarP(&config.Folder, "PIPELINE_FOLDER", "", os.Getenv("NAMESPACE"), "Name of the folder to do the plan")
 	planCmd.PersistentFlags().BoolVarP(&config.Dryrun, "dry-run", "", true, "dryrun option for kubectl")
 
-	planCmd.MarkPersistentFlagRequired("pipeline-state-bucket")
-	planCmd.MarkPersistentFlagRequired("pipeline-state-key-prefix")
-	planCmd.MarkPersistentFlagRequired("pipeline-terraform-state-lock-table")
-	planCmd.MarkPersistentFlagRequired("pipeline-state-region")
-	planCmd.MarkPersistentFlagRequired("pipeline-cluster")
-	planCmd.MarkPersistentFlagRequired("pipeline-repopath")
-	planCmd.MarkPersistentFlagRequired("pipeline-folder")
+	planCmd.PersistentFlags().StringVarP(&TF_VAR_cluster_name, "TF_VAR_cluster_name", "", os.Getenv("TF_VAR_cluster_name"), "State bucket where terraform state file is stored")
+	planCmd.PersistentFlags().StringVarP(&TF_VAR_cluster_state_bucket, "TF_VAR_cluster_state_bucket", "", os.Getenv("TF_VAR_cluster_state_bucket"), "State bucket name")
+	planCmd.PersistentFlags().StringVarP(&TF_VAR_cluster_state_key, "TF_VAR_cluster_state_key", "", os.Getenv("TF_VAR_cluster_state_key"), "State bucket key prefix location")
+	planCmd.PersistentFlags().StringVarP(&TF_VAR_kubernetes_cluster, "TF_VAR_kubernetes_cluster", "", os.Getenv("TF_VAR_kubernetes_cluster"), "kubernetes cluster name")
 
 	planCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
 		if viper.IsSet(f.Name) && viper.GetString(f.Name) != "" {
