@@ -40,11 +40,9 @@ to quickly create a Cobra application.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log.Printf("Starting Plan for namespace %v", config.Folder)
 
-			if output, err := apply.ExecutePlanNamespace(&config); err != nil {
+			if err := apply.PlanNamespace(&config); err != nil {
 				log.Printf("Error executing Plan for namespace %v: %v", config.Folder, err)
 				os.Exit(1)
-			} else {
-				log.Printf("Executing plan successful with output %v:", output)
 			}
 			return nil
 		},

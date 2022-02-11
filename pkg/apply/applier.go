@@ -83,21 +83,37 @@ func applyNamespace(config *ApplierConfig) (string, error) {
 	log.Printf("RUN :  file %v", config.Folder)
 	outputKubectl, err := applyKubectl(config)
 	if err != nil {
-		err := fmt.Errorf("Error running kubectl dry-run on namespace %s: %v", config.Folder, err)
+		err := fmt.Errorf("error running kubectl dry-run on namespace %s: %v", config.Folder, err)
 		return "", err
 
 	}
 
-	outputInitTf, err := initTerraform(config)
+	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
+
+	// tfArgs := []string{
+	// 	"init",
+	// 	fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
+	// 	fmt.Sprintf("%s=key=%s", "-backend-config", key),
+	// 	fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
+	// 	fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
+
+	tfArgs := []string{
+		"init",
+		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
+		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
+
+	outputInitTf, err := runTerraform(config, tfArgs)
 	if err != nil {
-		err := fmt.Errorf("Error running terraform init on namespace %s: %v", config.Folder, err)
+		err := fmt.Errorf("error running terraform init on namespace %s: %v", config.Folder, err)
 		return "", err
 
 	}
 
-	outputApplyTf, err := applyTerraform(config)
+	tfArgs = []string{"apply"}
+	outputApplyTf, err := runTerraform(config, tfArgs)
 	if err != nil {
-		err := fmt.Errorf("Error running terraform plan  on namespace %s: %v", config.Folder, err)
+		err := fmt.Errorf("error running terraform plan  on namespace %s: %v", config.Folder, err)
 		return "", err
 
 	}
@@ -106,40 +122,49 @@ func applyNamespace(config *ApplierConfig) (string, error) {
 	return output, err
 }
 
-func planNamespace(config *ApplierConfig) (string, error) {
+func PlanNamespace(config *ApplierConfig) error {
 	log.Printf("RUN :  file %v", config.Folder)
 	config.Dryrun = true
 	outputKubectl, err := applyKubectl(config)
 	if err != nil {
 		err := fmt.Errorf("error running kubectl dry-run on namespace %s: %v", config.Folder, err)
-		return "", err
-
+		return err
 	}
 
-	outputInitTf, err := initTerraform(config)
+	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
+
+	// tfArgs := []string{
+	// 	"init",
+	// 	fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
+	// 	fmt.Sprintf("%s=key=%s", "-backend-config", key),
+	// 	fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
+	// 	fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
+
+	tfArgs := []string{
+		"init",
+		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
+		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
+
+	fmt.Println(tfArgs)
+	outputInitTf, err := runTerraform(config, tfArgs)
 	if err != nil {
 		err := fmt.Errorf("error running terraform init on namespace %s: %v", config.Folder, err)
-		return "", err
+		return err
 
 	}
 
-	outputPlanTf, err := planTerraform(config)
+	tfArgs = []string{"plan"}
+	outputPlanTf, err := runTerraform(config, tfArgs)
 	if err != nil {
 		err := fmt.Errorf("error running terraform plan  on namespace %s: %v", config.Folder, err)
-		return "", err
+		return err
 
 	}
 	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
 
-	return output, err
-}
-
-func ExecutePlanNamespace(config *ApplierConfig) (output string, err error) {
-	output, err = planNamespace(config)
-	if err != nil {
-		return "", err
-	}
-	return output, nil
+	fmt.Printf("Output of Namespace changes %s", output)
+	return nil
 }
 
 // applyKubectl attempts to dryn-run of "kubectl apply" to the files in the given folder.
@@ -163,41 +188,6 @@ func applyKubectl(config *ApplierConfig) (output string, err error) {
 
 	return string(outb), nil
 
-}
-
-func applyTerraform(config *ApplierConfig) (output string, err error) {
-
-	tfArgs := []string{"apply"}
-	return runTerraform(config, tfArgs)
-
-}
-
-func planTerraform(config *ApplierConfig) (output string, err error) {
-
-	tfArgs := []string{"plan"}
-	return runTerraform(config, tfArgs)
-
-}
-
-func initTerraform(config *ApplierConfig) (output string, err error) {
-
-	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
-
-	// tfArgs := []string{
-	// 	"init",
-	// 	fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
-	// 	fmt.Sprintf("%s=key=%s", "-backend-config", key),
-	// 	fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
-	// 	fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
-
-	tfArgs := []string{
-		"init",
-		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
-		fmt.Sprintf("%s=key=%s", "-backend-config", key),
-		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
-
-	fmt.Println(tfArgs)
-	return runTerraform(config, tfArgs)
 }
 
 func runTerraform(config *ApplierConfig, tfArgs []string) (output string, err error) {
