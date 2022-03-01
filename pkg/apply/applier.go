@@ -1,12 +1,15 @@
 package apply
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
+	terraform "github.com/ministryofjustice/cloud-platform-cli/pkg/terraform"
 	"github.com/poornima-krishnasamy/cloud-platform-applier/pkg/sysutil"
 )
 
@@ -117,7 +120,7 @@ func applyNamespace(config *ApplierConfig) (string, error) {
 		return "", err
 
 	}
-	output := outputKubectl + "\n" + outputInitTf + "\n" + outputApplyTf
+	output := outputKubectl + "\n" + outputInitTf.Stdout + "\n" + outputApplyTf.Stdout
 
 	return output, err
 }
@@ -133,23 +136,22 @@ func PlanNamespace(config *ApplierConfig) error {
 
 	key := config.StateKeyPrefix + config.Cluster + "/" + filepath.Base(config.Folder) + "/terraform.tfstate"
 
-	// tfArgs := []string{
-	// 	"init",
-	// 	fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
-	// 	fmt.Sprintf("%s=key=%s", "-backend-config", key),
-	// 	fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
-	// 	fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
-
 	tfArgs := []string{
 		"init",
 		fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
 		fmt.Sprintf("%s=key=%s", "-backend-config", key),
+		fmt.Sprintf("%s=dynamodb_table=%s", "-backend-config", config.StateLockTable),
 		fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
 
-	fmt.Println(tfArgs)
+	// tfArgs := []string{
+	// 	"init",
+	// 	fmt.Sprintf("%s=bucket=%s", "-backend-config", config.StateBucket),
+	// 	fmt.Sprintf("%s=key=%s", "-backend-config", key),
+	// 	fmt.Sprintf("%s=region=%s", "-backend-config", config.StateRegion)}
+
 	outputInitTf, err := runTerraform(config, tfArgs)
 	if err != nil {
-		err := fmt.Errorf("error running terraform init on namespace %s: %v", config.Folder, err)
+		err := fmt.Errorf("error running terraform init on namespace %s: %v: %v", config.Folder, err.Error(), outputInitTf.Stderr)
 		return err
 
 	}
@@ -157,11 +159,11 @@ func PlanNamespace(config *ApplierConfig) error {
 	tfArgs = []string{"plan"}
 	outputPlanTf, err := runTerraform(config, tfArgs)
 	if err != nil {
-		err := fmt.Errorf("error running terraform plan  on namespace %s: %v", config.Folder, err)
+		err := fmt.Errorf("error running terraform plan  on namespace %s: %v: %v", config.Folder, err.Error(), outputPlanTf.Stderr)
 		return err
 
 	}
-	output := outputKubectl + "\n" + outputInitTf + "\n" + outputPlanTf
+	output := outputKubectl + "\n" + outputInitTf.Stdout + "\n" + outputPlanTf.Stdout
 
 	fmt.Printf("Output of Namespace changes %s", output)
 	return nil
@@ -190,15 +192,45 @@ func applyKubectl(config *ApplierConfig) (output string, err error) {
 
 }
 
-func runTerraform(config *ApplierConfig, tfArgs []string) (output string, err error) {
+func runTerraform(config *ApplierConfig, tfArgs []string) (output *terraform.CmdOutput, err error) {
 
 	Command := exec.Command("terraform", tfArgs...)
 
 	Command.Dir = config.RepoPath + "/" + config.Folder + "/resources"
-	outb, err := Command.Output()
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	var exitCode int
+
+	Command.Stdout = &stdoutBuf
+	Command.Stderr = &stderrBuf
+
+	err = Command.Run()
 	if err != nil {
-		return "", err
+		if exitError, ok := err.(*exec.ExitError); ok {
+			ws := exitError.Sys().(syscall.WaitStatus)
+			exitCode = ws.ExitStatus()
+		}
+		cmdOutput := terraform.CmdOutput{
+			Stdout:   stdoutBuf.String(),
+			Stderr:   stderrBuf.String(),
+			ExitCode: exitCode,
+		}
+		return &cmdOutput, err
+	} else {
+		ws := Command.ProcessState.Sys().(syscall.WaitStatus)
+		exitCode = ws.ExitStatus()
 	}
 
-	return string(outb), nil
+	cmdOutput := terraform.CmdOutput{
+		Stdout:   stdoutBuf.String(),
+		Stderr:   stderrBuf.String(),
+		ExitCode: exitCode,
+	}
+
+	if cmdOutput.ExitCode != 0 {
+		return &cmdOutput, err
+	} else {
+		return &cmdOutput, nil
+	}
 }
