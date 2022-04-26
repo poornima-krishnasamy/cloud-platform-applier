@@ -17,7 +17,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -41,6 +40,10 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// You can bind cobra and viper in a few locations, but PersistencePreRunE on the root command works well
+		return initializeConfig(cmd)
+	},
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
@@ -53,7 +56,7 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	//cobra.OnInitialize(initConfig)
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
@@ -63,33 +66,41 @@ func init() {
 
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	viper := viper.New()
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
+func initializeConfig(cmd *cobra.Command) error {
+	v := viper.New()
 
-		// Search config in home directory with name ".cloud-platform-applier" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".cloud-platform-applier")
+	// Set the base name of the config file, without the file extension.
+	v.SetConfigName(".env")
+
+	// Set as many paths as you like where viper should look for the
+	// config file. We are only looking in the current working directory.
+	v.AddConfigPath(".")
+
+	// Attempt to read the config file, gracefully ignoring errors
+	// caused by a config file not being found. Return an error
+	// if we cannot parse the config file.
+	if err := v.ReadInConfig(); err != nil {
+		// It's okay if there isn't a config file
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return err
+		}
 	}
 
-	//viper.SetEnvPrefix("pipeline")
+	// When we bind flags to environment variables expect that the
+	// environment variables are prefixed, e.g. a flag like --number
+	// binds to an environment variable STING_NUMBER. This helps
+	// avoid conflicts.
+	v.SetEnvPrefix("PIPELINE")
 
 	// Bind to environment variables
 	// Works great for simple config names, but needs help for names
 	// like --favorite-color which we fix in the bindFlags function
-	viper.AutomaticEnv()
+	v.AutomaticEnv()
 
 	// Bind the current command's flags to viper
-	//	bindFlags(rootCmd, viper)
+	bindFlags(cmd, v)
 
+	return nil
 }
 
 // Bind each cobra flag to its associated viper configuration (config file and environment variable)
@@ -106,6 +117,14 @@ func bindFlags(cmd *cobra.Command, v *viper.Viper) {
 		if !f.Changed && v.IsSet(f.Name) {
 			val := v.Get(f.Name)
 			cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+			//fmt.Printf("Binding %s command flag to environment variable: %s", f.Name, flagToEnvVar(f.Name))
+			fmt.Println(f.Name, val)
 		}
 	})
 }
+
+// // flagToEnvVar converts command flag name to equivalent environment variable name
+// func flagToEnvVar(flag string) string {
+// 	envVarSuffix := strings.ToUpper(strings.ReplaceAll(flag, "-", "_"))
+// 	return fmt.Sprintf("%s_%s", "", envVarSuffix)
+// }
